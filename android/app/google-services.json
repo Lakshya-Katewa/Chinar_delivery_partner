@@ -1,0 +1,68 @@
+{
+  "project_info": {
+    "project_number": "438522771375",
+    "firebase_url": "https://chinar-a99bd-default-rtdb.firebaseio.com",
+    "project_id": "chinar-a99bd",
+    "storage_bucket": "chinar-a99bd.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:438522771375:android:a0a9e5b9be652717f1215a",
+        "android_client_info": {
+          "package_name": "com.example.admin_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC2jP3jMdHGjeSm4E0L9M62Zp5DpK6TvWg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:438522771375:android:2261f6055e6915f2f1215a",
+        "android_client_info": {
+          "package_name": "com.example.chinar_dairy"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC2jP3jMdHGjeSm4E0L9M62Zp5DpK6TvWg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:438522771375:android:f65196311af40b7cf1215a",
+        "android_client_info": {
+          "package_name": "com.example.chinar_delivery_boy_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC2jP3jMdHGjeSm4E0L9M62Zp5DpK6TvWg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
