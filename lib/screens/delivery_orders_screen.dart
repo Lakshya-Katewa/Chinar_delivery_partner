@@ -21,29 +21,41 @@ class _DeliveryOrdersScreenState extends State<DeliveryOrdersScreen> {
   @override
   void initState() {
     super.initState();
-    // Use post-frame callback to avoid setState during build
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadOrders();
     });
   }
 
   Future<void> _loadOrders() async {
-    final authProvider = Provider.of<DeliveryAuthProvider>(context, listen: false);
-    final deliveryProvider = Provider.of<DeliveryProvider>(context, listen: false);
-    
+    final authProvider = Provider.of<DeliveryAuthProvider>(
+      context,
+      listen: false,
+    );
+    final deliveryProvider = Provider.of<DeliveryProvider>(
+      context,
+      listen: false,
+    );
+
     if (authProvider.deliveryBoy != null) {
       await deliveryProvider.loadTodayDeliveries(authProvider.deliveryBoy!);
     }
   }
 
-  // Add method to refresh location and recalculate route
   Future<void> _refreshLocationAndRoute() async {
-    final authProvider = Provider.of<DeliveryAuthProvider>(context, listen: false);
-    final deliveryProvider = Provider.of<DeliveryProvider>(context, listen: false);
-    
+    final authProvider = Provider.of<DeliveryAuthProvider>(
+      context,
+      listen: false,
+    );
+    final deliveryProvider = Provider.of<DeliveryProvider>(
+      context,
+      listen: false,
+    );
+
     if (authProvider.deliveryBoy != null) {
-      await deliveryProvider.refreshLocationAndDistances(authProvider.deliveryBoy!);
-      
+      await deliveryProvider.refreshLocationAndDistances(
+        authProvider.deliveryBoy!,
+      );
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -87,26 +99,25 @@ class _DeliveryOrdersScreenState extends State<DeliveryOrdersScreen> {
   }
 
   Future<void> _makePhoneCall(String phoneNumber) async {
-    final Uri launchUri = Uri(
-      scheme: 'tel',
-      path: phoneNumber,
-    );
+    final Uri launchUri = Uri(scheme: 'tel', path: phoneNumber);
     if (await canLaunchUrl(launchUri)) {
       await launchUrl(launchUri);
     }
   }
 
-  // Update the _openMaps method to get fresh location
-  Future<void> _openMaps(double latitude, double longitude, String address, String customerName) async {
-    // Get fresh current location
+  Future<void> _openMaps(
+    double latitude,
+    double longitude,
+    String address,
+    String customerName,
+  ) async {
     Position? currentLocation;
-    
+
     try {
       currentLocation = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
         timeLimit: const Duration(seconds: 10),
       );
-      debugPrint('Got fresh location for navigation: ${currentLocation.latitude}, ${currentLocation.longitude}');
     } catch (e) {
       debugPrint('Could not get current location for navigation: $e');
     }
@@ -120,7 +131,6 @@ class _DeliveryOrdersScreenState extends State<DeliveryOrdersScreen> {
     );
   }
 
-  // Update the _showOrderActions method to pass customer name to _openMaps
   void _showOrderActions(DeliveryOrder order) {
     showModalBottomSheet(
       context: context,
@@ -141,24 +151,18 @@ class _DeliveryOrdersScreenState extends State<DeliveryOrdersScreen> {
               ),
             ),
             const SizedBox(height: 20),
-            
+
             Text(
               order.customerName,
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
             Text(
               'Order #${order.id.substring(0, 8)}',
-              style: TextStyle(
-                color: Colors.grey.shade600,
-              ),
+              style: TextStyle(color: Colors.grey.shade600),
             ),
             const SizedBox(height: 24),
 
-            // Action buttons
             _buildActionButton(
               icon: Icons.phone,
               label: 'Call Customer',
@@ -169,7 +173,7 @@ class _DeliveryOrdersScreenState extends State<DeliveryOrdersScreen> {
               },
             ),
             const SizedBox(height: 12),
-            
+
             _buildActionButton(
               icon: Icons.navigation,
               label: 'Get Directions',
@@ -180,7 +184,7 @@ class _DeliveryOrdersScreenState extends State<DeliveryOrdersScreen> {
                   order.deliveryAddress.latitude,
                   order.deliveryAddress.longitude,
                   order.deliveryAddress.fullAddress,
-                  order.customerName, // Pass customer name
+                  order.customerName,
                 );
               },
             ),
@@ -194,7 +198,7 @@ class _DeliveryOrdersScreenState extends State<DeliveryOrdersScreen> {
                 onTap: () => _updateOrderStatus(order, 'outForDelivery'),
               ),
               const SizedBox(height: 12),
-              
+
               _buildActionButton(
                 icon: Icons.check_circle,
                 label: 'Mark as Delivered',
@@ -233,25 +237,80 @@ class _DeliveryOrdersScreenState extends State<DeliveryOrdersScreen> {
           backgroundColor: color,
           foregroundColor: Colors.white,
           padding: const EdgeInsets.symmetric(vertical: 12),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
-          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         ),
       ),
     );
   }
 
+  // --- REQUIREMENT 2: 100 METER GPS VERIFICATION ---
   Future<void> _updateOrderStatus(DeliveryOrder order, String status) async {
-    Navigator.pop(context);
-    
+    Navigator.pop(context); // Close bottom sheet
+
+    // If the partner is marking as delivered, intercept and check GPS
+    if (status == 'delivered') {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(child: CircularProgressIndicator()),
+      );
+
+      try {
+        Position position = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.high,
+          timeLimit: const Duration(seconds: 15),
+        );
+
+        double distanceInMeters = Geolocator.distanceBetween(
+          position.latitude,
+          position.longitude,
+          order.deliveryAddress.latitude,
+          order.deliveryAddress.longitude,
+        );
+
+        Navigator.pop(context); // Dismiss loading
+
+        // CHECK IF > 100 METERS
+        if (distanceInMeters > 100) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Cannot mark as delivered! You are ${(distanceInMeters).toStringAsFixed(0)} meters away from the customer. You must be within 100 meters.',
+              ),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 5),
+            ),
+          );
+          return; // Abort the delivery mark
+        }
+      } catch (e) {
+        Navigator.pop(context); // Dismiss loading
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Failed to get GPS location: $e. Make sure location is turned on.',
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return; // Abort
+      }
+    }
+
+    // Proceed with update if it wasn't 'delivered', or if the GPS check passed
     try {
-      final deliveryProvider = Provider.of<DeliveryProvider>(context, listen: false);
+      final deliveryProvider = Provider.of<DeliveryProvider>(
+        context,
+        listen: false,
+      );
       await deliveryProvider.updateOrderStatus(order.id, status, order.type);
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Order status updated to ${status.replaceAll('_', ' ')}'),
+            content: Text(
+              'Order status updated to ${status.replaceAll('_', ' ')}',
+            ),
             backgroundColor: Colors.green,
           ),
         );
@@ -282,10 +341,7 @@ class _DeliveryOrdersScreenState extends State<DeliveryOrdersScreen> {
             onPressed: _refreshLocationAndRoute,
             tooltip: 'Update route from current location',
           ),
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _loadOrders,
-          ),
+          IconButton(icon: const Icon(Icons.refresh), onPressed: _loadOrders),
         ],
       ),
       body: Column(
@@ -295,19 +351,13 @@ class _DeliveryOrdersScreenState extends State<DeliveryOrdersScreen> {
             color: Colors.white,
             child: Row(
               children: [
-                Expanded(
-                  child: _buildFilterTab('all', 'All'),
-                ),
-                Expanded(
-                  child: _buildFilterTab('pending', 'Pending'),
-                ),
-                Expanded(
-                  child: _buildFilterTab('delivered', 'Delivered'),
-                ),
+                Expanded(child: _buildFilterTab('all', 'All')),
+                Expanded(child: _buildFilterTab('pending', 'Pending')),
+                Expanded(child: _buildFilterTab('delivered', 'Delivered')),
               ],
             ),
           ),
-          
+
           // Orders List
           Expanded(
             child: Consumer<DeliveryProvider>(
@@ -337,9 +387,7 @@ class _DeliveryOrdersScreenState extends State<DeliveryOrdersScreen> {
                         const SizedBox(height: 8),
                         Text(
                           deliveryProvider.error!,
-                          style: TextStyle(
-                            color: Colors.grey.shade600,
-                          ),
+                          style: TextStyle(color: Colors.grey.shade600),
                           textAlign: TextAlign.center,
                         ),
                         const SizedBox(height: 16),
@@ -352,7 +400,9 @@ class _DeliveryOrdersScreenState extends State<DeliveryOrdersScreen> {
                   );
                 }
 
-                final filteredOrders = _getFilteredOrders(deliveryProvider.todayDeliveries);
+                final filteredOrders = _getFilteredOrders(
+                  deliveryProvider.todayDeliveries,
+                );
 
                 if (filteredOrders.isEmpty) {
                   return Center(
@@ -374,12 +424,10 @@ class _DeliveryOrdersScreenState extends State<DeliveryOrdersScreen> {
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          _selectedFilter == 'all' 
+                          _selectedFilter == 'all'
                               ? 'No deliveries scheduled for today'
                               : 'No ${_selectedFilter} orders',
-                          style: TextStyle(
-                            color: Colors.grey.shade500,
-                          ),
+                          style: TextStyle(color: Colors.grey.shade500),
                         ),
                       ],
                     ),
@@ -403,12 +451,12 @@ class _DeliveryOrdersScreenState extends State<DeliveryOrdersScreen> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                // Order Header
                                 Row(
                                   children: [
                                     Expanded(
                                       child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
                                         children: [
                                           Text(
                                             order.customerName,
@@ -433,7 +481,9 @@ class _DeliveryOrdersScreenState extends State<DeliveryOrdersScreen> {
                                         vertical: 4,
                                       ),
                                       decoration: BoxDecoration(
-                                        color: _getStatusColor(order.status).withOpacity(0.1),
+                                        color: _getStatusColor(
+                                          order.status,
+                                        ).withOpacity(0.1),
                                         borderRadius: BorderRadius.circular(12),
                                         border: Border.all(
                                           color: _getStatusColor(order.status),
@@ -450,34 +500,36 @@ class _DeliveryOrdersScreenState extends State<DeliveryOrdersScreen> {
                                     ),
                                   ],
                                 ),
-                                
+
                                 const SizedBox(height: 12),
-                                
-                                // Items
-                                ...order.items.map((item) => Padding(
-                                  padding: const EdgeInsets.only(bottom: 4),
-                                  child: Row(
-                                    children: [
-                                      Expanded(
-                                        child: Text(
-                                          '${item.quantity.toInt()} ${item.unit} ${item.productName}',
-                                          style: const TextStyle(fontSize: 14),
+
+                                ...order.items.map(
+                                  (item) => Padding(
+                                    padding: const EdgeInsets.only(bottom: 4),
+                                    child: Row(
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            '${item.quantity.toInt()} ${item.unit} ${item.productName}',
+                                            style: const TextStyle(
+                                              fontSize: 14,
+                                            ),
+                                          ),
                                         ),
-                                      ),
-                                      Text(
-                                        '₹${item.totalPrice.toStringAsFixed(2)}',
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          color: Colors.green.shade700,
+                                        Text(
+                                          '₹${item.totalPrice.toStringAsFixed(2)}',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.green.shade700,
+                                          ),
                                         ),
-                                      ),
-                                    ],
+                                      ],
+                                    ),
                                   ),
-                                )),
-                                
+                                ),
+
                                 const Divider(),
-                                
-                                // Address and Distance
+
                                 Row(
                                   children: [
                                     Icon(
@@ -507,12 +559,12 @@ class _DeliveryOrdersScreenState extends State<DeliveryOrdersScreen> {
                                     ),
                                   ],
                                 ),
-                                
+
                                 const SizedBox(height: 8),
-                                
-                                // Total and Phone
+
                                 Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
                                   children: [
                                     Text(
                                       'Total: ₹${order.totalAmount.toStringAsFixed(2)}',
@@ -525,20 +577,28 @@ class _DeliveryOrdersScreenState extends State<DeliveryOrdersScreen> {
                                     Row(
                                       children: [
                                         IconButton(
-                                          icon: const Icon(Icons.phone, size: 20),
-                                          onPressed: () => _makePhoneCall(order.customerPhone),
+                                          icon: const Icon(
+                                            Icons.phone,
+                                            size: 20,
+                                          ),
+                                          onPressed: () => _makePhoneCall(
+                                            order.customerPhone,
+                                          ),
                                           color: Colors.green.shade700,
                                           padding: EdgeInsets.zero,
                                           constraints: const BoxConstraints(),
                                         ),
                                         const SizedBox(width: 8),
                                         IconButton(
-                                          icon: const Icon(Icons.navigation, size: 20),
+                                          icon: const Icon(
+                                            Icons.navigation,
+                                            size: 20,
+                                          ),
                                           onPressed: () => _openMaps(
                                             order.deliveryAddress.latitude,
                                             order.deliveryAddress.longitude,
                                             order.deliveryAddress.fullAddress,
-                                            order.customerName, // Add customer name
+                                            order.customerName,
                                           ),
                                           color: Colors.blue.shade700,
                                           padding: EdgeInsets.zero,
