@@ -242,7 +242,7 @@ class _DeliveryMapScreenState extends State<DeliveryMapScreen> {
                             ),
                           ),
                         );
-                      }).toList(),
+                      }),
                     ],
                   ),
 

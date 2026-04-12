@@ -39,6 +39,6 @@ class DeliveryStats {
       final bonus = todayDelivered * bonusPerDelivery;
       return 'Commission: ₹${commission.toStringAsFixed(0)} + Bonus: ₹${bonus.toStringAsFixed(0)}';
     }
-    return '${todayDelivered} deliveries × ₹${commissionPerDelivery.toStringAsFixed(0)}';
+    return '$todayDelivered deliveries × ₹${commissionPerDelivery.toStringAsFixed(0)}';
   }
 }

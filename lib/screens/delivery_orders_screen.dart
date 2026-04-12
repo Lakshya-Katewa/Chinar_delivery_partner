@@ -426,7 +426,7 @@ class _DeliveryOrdersScreenState extends State<DeliveryOrdersScreen> {
                         Text(
                           _selectedFilter == 'all'
                               ? 'No deliveries scheduled for today'
-                              : 'No ${_selectedFilter} orders',
+                              : 'No $_selectedFilter orders',
                           style: TextStyle(color: Colors.grey.shade500),
                         ),
                       ],
