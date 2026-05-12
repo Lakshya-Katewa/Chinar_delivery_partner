@@ -23,7 +23,7 @@ class _DeliveryProfileScreenState extends State<DeliveryProfileScreen> {
       body: Consumer<DeliveryAuthProvider>(
         builder: (context, authProvider, child) {
           final deliveryBoy = authProvider.deliveryBoy;
-          
+
           if (deliveryBoy == null) {
             return const Center(child: Text('No profile data available'));
           }
@@ -46,7 +46,7 @@ class _DeliveryProfileScreenState extends State<DeliveryProfileScreen> {
                               : null,
                           child: deliveryBoy.profileImageUrl == null
                               ? Text(
-                                  deliveryBoy.name.isNotEmpty 
+                                  deliveryBoy.name.isNotEmpty
                                       ? deliveryBoy.name[0].toUpperCase()
                                       : 'D',
                                   style: TextStyle(
@@ -80,21 +80,21 @@ class _DeliveryProfileScreenState extends State<DeliveryProfileScreen> {
                             vertical: 6,
                           ),
                           decoration: BoxDecoration(
-                            color: deliveryBoy.isActive 
-                                ? Colors.green.shade100 
+                            color: deliveryBoy.isActive
+                                ? Colors.green.shade100
                                 : Colors.red.shade100,
                             borderRadius: BorderRadius.circular(20),
                             border: Border.all(
-                              color: deliveryBoy.isActive 
-                                  ? Colors.green.shade700 
+                              color: deliveryBoy.isActive
+                                  ? Colors.green.shade700
                                   : Colors.red.shade700,
                             ),
                           ),
                           child: Text(
                             deliveryBoy.isActive ? 'Active' : 'Inactive',
                             style: TextStyle(
-                              color: deliveryBoy.isActive 
-                                  ? Colors.green.shade700 
+                              color: deliveryBoy.isActive
+                                  ? Colors.green.shade700
                                   : Colors.red.shade700,
                               fontWeight: FontWeight.bold,
                               fontSize: 12,
@@ -151,9 +151,7 @@ class _DeliveryProfileScreenState extends State<DeliveryProfileScreen> {
                         if (deliveryBoy.assignedAreas.isEmpty)
                           Text(
                             'No areas assigned',
-                            style: TextStyle(
-                              color: Colors.grey.shade600,
-                            ),
+                            style: TextStyle(color: Colors.grey.shade600),
                           )
                         else
                           Wrap(
@@ -168,7 +166,9 @@ class _DeliveryProfileScreenState extends State<DeliveryProfileScreen> {
                                 decoration: BoxDecoration(
                                   color: Colors.blue.shade100,
                                   borderRadius: BorderRadius.circular(20),
-                                  border: Border.all(color: Colors.blue.shade700),
+                                  border: Border.all(
+                                    color: Colors.blue.shade700,
+                                  ),
                                 ),
                                 child: Text(
                                   area,
@@ -192,7 +192,7 @@ class _DeliveryProfileScreenState extends State<DeliveryProfileScreen> {
                 Consumer<DeliveryProvider>(
                   builder: (context, deliveryProvider, child) {
                     final stats = deliveryProvider.stats;
-                    
+
                     return Card(
                       child: Padding(
                         padding: const EdgeInsets.all(16),
@@ -281,13 +281,13 @@ class _DeliveryProfileScreenState extends State<DeliveryProfileScreen> {
                         _buildInfoRow(
                           Icons.calendar_today,
                           'Joined',
-                          '${deliveryBoy.createdAt.day}/${deliveryBoy.createdAt.month}/${deliveryBoy.createdAt.year}',
+                          '${deliveryBoy.createdAt?.day ?? "--"}/${deliveryBoy.createdAt?.month ?? "--"}/${deliveryBoy.createdAt?.year ?? "--"}',
                         ),
                         const SizedBox(height: 12),
                         _buildInfoRow(
                           Icons.update,
                           'Last Updated',
-                          '${deliveryBoy.updatedAt.day}/${deliveryBoy.updatedAt.month}/${deliveryBoy.updatedAt.year}',
+                          '${deliveryBoy.updatedAt?.day ?? "--"}/${deliveryBoy.updatedAt?.month ?? "--"}/${deliveryBoy.updatedAt?.year ?? "--"}',
                         ),
                       ],
                     ),
@@ -305,7 +305,9 @@ class _DeliveryProfileScreenState extends State<DeliveryProfileScreen> {
                         context: context,
                         builder: (context) => AlertDialog(
                           title: const Text('Sign Out'),
-                          content: const Text('Are you sure you want to sign out?'),
+                          content: const Text(
+                            'Are you sure you want to sign out?',
+                          ),
                           actions: [
                             TextButton(
                               onPressed: () => Navigator.pop(context, false),
@@ -326,7 +328,10 @@ class _DeliveryProfileScreenState extends State<DeliveryProfileScreen> {
                       if (confirmed == true) {
                         await authProvider.signOut();
                         if (mounted) {
-                          Navigator.pushReplacementNamed(context, '/delivery-login');
+                          Navigator.pushReplacementNamed(
+                            context,
+                            '/delivery-login',
+                          );
                         }
                       }
                     },
@@ -363,10 +368,7 @@ class _DeliveryProfileScreenState extends State<DeliveryProfileScreen> {
             children: [
               Text(
                 label,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.grey.shade600,
-                ),
+                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
               ),
               Text(
                 value,
@@ -382,7 +384,12 @@ class _DeliveryProfileScreenState extends State<DeliveryProfileScreen> {
     );
   }
 
-  Widget _buildStatItem(String label, String value, IconData icon, Color color) {
+  Widget _buildStatItem(
+    String label,
+    String value,
+    IconData icon,
+    Color color,
+  ) {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -404,10 +411,7 @@ class _DeliveryProfileScreenState extends State<DeliveryProfileScreen> {
           ),
           Text(
             label,
-            style: const TextStyle(
-              fontSize: 12,
-              color: Colors.grey,
-            ),
+            style: const TextStyle(fontSize: 12, color: Colors.grey),
             textAlign: TextAlign.center,
           ),
         ],

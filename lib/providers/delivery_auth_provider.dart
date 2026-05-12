@@ -33,7 +33,7 @@ class DeliveryAuthProvider with ChangeNotifier {
 
       if (credential.user != null) {
         await _loadDeliveryBoyData(credential.user!.uid);
-        
+
         // Save auth state if login successful
         if (_deliveryBoy != null) {
           await _saveAuthState(credential.user!.uid);
@@ -52,10 +52,10 @@ class DeliveryAuthProvider with ChangeNotifier {
   Future<void> _loadDeliveryBoyData(String uid) async {
     try {
       final doc = await _firestore.collection('delivery_boys').doc(uid).get();
-      
+
       if (doc.exists) {
         _deliveryBoy = DeliveryBoy.fromFirestore(doc);
-        
+
         if (!_deliveryBoy!.isActive) {
           _error = 'Your account has been deactivated. Please contact admin.';
           _deliveryBoy = null;
@@ -88,25 +88,31 @@ class DeliveryAuthProvider with ChangeNotifier {
     if (_deliveryBoy == null) return;
 
     try {
-      await _firestore.collection('delivery_boys').doc(_deliveryBoy!.id).update({
-        'latitude': latitude,
-        'longitude': longitude,
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
+      await _firestore
+          .collection('delivery_boys')
+          .doc(_deliveryBoy!.id)
+          .update({
+            'latitude': latitude,
+            'longitude': longitude,
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
 
       _deliveryBoy = DeliveryBoy(
         id: _deliveryBoy!.id,
         name: _deliveryBoy!.name,
         email: _deliveryBoy!.email,
         phone: _deliveryBoy!.phone,
+        password:
+            _deliveryBoy!.password, // FIX 1: Added missing required password
         assignedAreas: _deliveryBoy!.assignedAreas,
         isActive: _deliveryBoy!.isActive,
         latitude: latitude,
         longitude: longitude,
         profileImageUrl: _deliveryBoy!.profileImageUrl,
         createdAt: _deliveryBoy!.createdAt,
-        updatedAt: DateTime.now(), 
-        commissionPerDelivery: _deliveryBoy!.commissionPerDelivery,
+        updatedAt: DateTime.now(),
+        // FIX 2: Corrected the name to ratePerUnitQuantity to match your model
+        ratePerUnitQuantity: _deliveryBoy!.ratePerUnitQuantity,
       );
       notifyListeners();
     } catch (e) {
