@@ -44,15 +44,19 @@ class _DeliveryCustomersScreenState extends State<DeliveryCustomersScreen> {
 
       if (deliveryBoy == null) return;
 
-      // Load customers from assigned areas
+      // FAST FAIL: If no areas assigned, they shouldn't see anyone.
+      if (deliveryBoy.assignedAreas.isEmpty) {
+        setState(() {
+          _customers = [];
+          _isLoading = false;
+        });
+        return;
+      }
+
+      // STRICT FILTER: Load customers ONLY from assigned areas
       final customersQuery = await FirebaseFirestore.instance
           .collection('customers')
-          .where(
-            'areaCode',
-            whereIn: deliveryBoy.assignedAreas.isNotEmpty
-                ? deliveryBoy.assignedAreas
-                : ['dummy'],
-          ) // Prevent empty whereIn
+          .where('areaCode', whereIn: deliveryBoy.assignedAreas)
           .get();
 
       setState(() {
@@ -163,7 +167,7 @@ class _DeliveryCustomersScreenState extends State<DeliveryCustomersScreen> {
                         Text(
                           _searchQuery.isNotEmpty
                               ? 'No customers found'
-                              : 'No customers in your area',
+                              : 'No customers assigned to your area',
                           style: TextStyle(
                             fontSize: 18,
                             color: Colors.grey.shade600,
@@ -207,24 +211,6 @@ class _DeliveryCustomersScreenState extends State<DeliveryCustomersScreen> {
                                 const SizedBox(height: 4),
                                 Text(customer.phone),
                                 Text(customer.areaCode),
-                                const SizedBox(height: 4),
-                                Row(
-                                  children: [
-                                    Icon(
-                                      Icons.account_balance_wallet,
-                                      size: 16,
-                                      color: Colors.green.shade700,
-                                    ),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      '₹${customer.walletBalance.toStringAsFixed(2)}',
-                                      style: TextStyle(
-                                        color: Colors.green.shade700,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ],
-                                ),
                               ],
                             ),
                           ),

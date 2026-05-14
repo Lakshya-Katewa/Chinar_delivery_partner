@@ -55,7 +55,6 @@ class _DeliveryOrdersScreenState extends State<DeliveryOrdersScreen> {
       await deliveryProvider.refreshLocationAndDistances(
         authProvider.deliveryBoy!,
       );
-
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -112,7 +111,6 @@ class _DeliveryOrdersScreenState extends State<DeliveryOrdersScreen> {
     String customerName,
   ) async {
     Position? currentLocation;
-
     try {
       currentLocation = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
@@ -243,11 +241,9 @@ class _DeliveryOrdersScreenState extends State<DeliveryOrdersScreen> {
     );
   }
 
-  // --- REQUIREMENT 2: 100 METER GPS VERIFICATION ---
   Future<void> _updateOrderStatus(DeliveryOrder order, String status) async {
-    Navigator.pop(context); // Close bottom sheet
+    Navigator.pop(context);
 
-    // If the partner is marking as delivered, intercept and check GPS
     if (status == 'delivered') {
       showDialog(
         context: context,
@@ -268,9 +264,8 @@ class _DeliveryOrdersScreenState extends State<DeliveryOrdersScreen> {
           order.deliveryAddress.longitude,
         );
 
-        Navigator.pop(context); // Dismiss loading
+        Navigator.pop(context);
 
-        // CHECK IF > 100 METERS
         if (distanceInMeters > 100) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -281,10 +276,10 @@ class _DeliveryOrdersScreenState extends State<DeliveryOrdersScreen> {
               duration: const Duration(seconds: 5),
             ),
           );
-          return; // Abort the delivery mark
+          return;
         }
       } catch (e) {
-        Navigator.pop(context); // Dismiss loading
+        Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
@@ -293,17 +288,26 @@ class _DeliveryOrdersScreenState extends State<DeliveryOrdersScreen> {
             backgroundColor: Colors.red,
           ),
         );
-        return; // Abort
+        return;
       }
     }
 
-    // Proceed with update if it wasn't 'delivered', or if the GPS check passed
     try {
+      final authProvider = Provider.of<DeliveryAuthProvider>(
+        context,
+        listen: false,
+      );
       final deliveryProvider = Provider.of<DeliveryProvider>(
         context,
         listen: false,
       );
-      await deliveryProvider.updateOrderStatus(order.id, status, order.type);
+      final deliveryBoy = authProvider.deliveryBoy;
+
+      if (deliveryBoy == null)
+        throw Exception("Delivery boy profile not found.");
+
+      // CRITICAL FIX: Pass the full objects so the provider can properly duplicate them to 'orders'
+      await deliveryProvider.updateOrderStatus(order, status, deliveryBoy);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -346,7 +350,6 @@ class _DeliveryOrdersScreenState extends State<DeliveryOrdersScreen> {
       ),
       body: Column(
         children: [
-          // Filter Tabs
           Container(
             color: Colors.white,
             child: Row(
@@ -357,15 +360,12 @@ class _DeliveryOrdersScreenState extends State<DeliveryOrdersScreen> {
               ],
             ),
           ),
-
-          // Orders List
           Expanded(
             child: Consumer<DeliveryProvider>(
               builder: (context, deliveryProvider, child) {
                 if (deliveryProvider.isLoading) {
                   return const Center(child: CircularProgressIndicator());
                 }
-
                 if (deliveryProvider.error != null) {
                   return Center(
                     child: Column(
@@ -500,9 +500,7 @@ class _DeliveryOrdersScreenState extends State<DeliveryOrdersScreen> {
                                     ),
                                   ],
                                 ),
-
                                 const SizedBox(height: 12),
-
                                 ...order.items.map(
                                   (item) => Padding(
                                     padding: const EdgeInsets.only(bottom: 4),
@@ -527,9 +525,7 @@ class _DeliveryOrdersScreenState extends State<DeliveryOrdersScreen> {
                                     ),
                                   ),
                                 ),
-
                                 const Divider(),
-
                                 Row(
                                   children: [
                                     Icon(
@@ -559,9 +555,7 @@ class _DeliveryOrdersScreenState extends State<DeliveryOrdersScreen> {
                                     ),
                                   ],
                                 ),
-
                                 const SizedBox(height: 8),
-
                                 Row(
                                   mainAxisAlignment:
                                       MainAxisAlignment.spaceBetween,
@@ -627,11 +621,7 @@ class _DeliveryOrdersScreenState extends State<DeliveryOrdersScreen> {
   Widget _buildFilterTab(String value, String label) {
     final isSelected = _selectedFilter == value;
     return InkWell(
-      onTap: () {
-        setState(() {
-          _selectedFilter = value;
-        });
-      },
+      onTap: () => setState(() => _selectedFilter = value),
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 12),
         decoration: BoxDecoration(
