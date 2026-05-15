@@ -69,8 +69,6 @@ class DeliveryProvider with ChangeNotifier {
       final baseLongitude = currentPosition?.longitude ?? deliveryBoy.longitude;
 
       Map<String, Map<String, dynamic>> localCustomerCache = {};
-
-      // CRITICAL FIX: Track which subscriptions already have a generated daily order
       Set<String> processedSubIds = {};
 
       // 1. LOAD STANDARD ORDERS (AND DAILY SUBSCRIPTION RECEIPTS)
@@ -88,17 +86,16 @@ class DeliveryProvider with ChangeNotifier {
           try {
             final orderData = doc.data();
 
-            // Log that this subscription has been handled for today
             if (orderData['subscriptionId'] != null) {
               processedSubIds.add(orderData['subscriptionId']);
             }
 
             bool isAreaMatched = false;
             final customerId = orderData['customerId'] as String?;
+            Map<String, dynamic>? customerData;
 
             if (customerId != null) {
-              Map<String, dynamic>? customerData =
-                  localCustomerCache[customerId];
+              customerData = localCustomerCache[customerId];
               if (customerData == null) {
                 final cDoc = await _firestore
                     .collection('customers')
@@ -110,48 +107,63 @@ class DeliveryProvider with ChangeNotifier {
                 }
               }
               if (customerData != null) {
-                final customerAreaCode = customerData['areaCode'] ?? '';
-                if (deliveryBoy.assignedAreas.contains(customerAreaCode))
+                final customerAreaCode =
+                    customerData['areaCode']?.toString() ??
+                    customerData['pinCode']?.toString() ??
+                    '';
+                if (deliveryBoy.assignedAreas.contains(customerAreaCode)) {
                   isAreaMatched = true;
+                }
               }
             }
 
+            Map<String, dynamic>? deliveryAddress =
+                orderData['deliveryAddress'] as Map<String, dynamic>?;
+
+            // If the receipt doesn't have an address, grab it from the customer profile
+            if (deliveryAddress == null && customerData != null) {
+              deliveryAddress =
+                  customerData['address'] as Map<String, dynamic>?;
+              orderData['deliveryAddress'] = deliveryAddress;
+            }
+
             if (!isAreaMatched) {
-              final directAreaCode = orderData['areaCode'];
+              final directAreaCode = orderData['areaCode']?.toString();
               if (directAreaCode != null &&
                   deliveryBoy.assignedAreas.contains(directAreaCode)) {
                 isAreaMatched = true;
-              } else {
-                final deliveryAddress =
-                    orderData['deliveryAddress'] as Map<String, dynamic>?;
-                if (deliveryAddress != null) {
-                  final addressAreaCode = deliveryAddress['areaCode'];
-                  if (addressAreaCode != null &&
-                      deliveryBoy.assignedAreas.contains(addressAreaCode))
-                    isAreaMatched = true;
+              } else if (deliveryAddress != null) {
+                final addressAreaCode =
+                    deliveryAddress['areaCode']?.toString() ??
+                    deliveryAddress['pinCode']?.toString();
+                if (addressAreaCode != null &&
+                    deliveryBoy.assignedAreas.contains(addressAreaCode)) {
+                  isAreaMatched = true;
                 }
               }
             }
 
             if (!isAreaMatched) continue;
 
-            final deliveryAddress =
-                orderData['deliveryAddress'] as Map<String, dynamic>?;
             if (deliveryAddress != null) {
               final destLat = _parseCoordinate(deliveryAddress['latitude']);
               final destLng = _parseCoordinate(deliveryAddress['longitude']);
 
-              if (destLat == 0.0 && destLng == 0.0) continue;
+              double distance = 999.0;
+              if (destLat != 0.0 && destLng != 0.0) {
+                distance = await _calculateDistance(
+                  baseLatitude,
+                  baseLongitude,
+                  destLat,
+                  destLng,
+                );
+              }
 
-              final distance = await _calculateDistance(
-                baseLatitude,
-                baseLongitude,
-                destLat,
-                destLng,
-              );
               deliveries.add(
                 DeliveryOrder.fromOrder(orderData, doc.id, distance),
               );
+            } else {
+              deliveries.add(DeliveryOrder.fromOrder(orderData, doc.id, 999.0));
             }
           } catch (e) {
             debugPrint('Error processing order ${doc.id}: $e');
@@ -170,7 +182,6 @@ class DeliveryProvider with ChangeNotifier {
 
         for (var doc in subscriptionsQuery.docs) {
           try {
-            // CRITICAL FIX: Skip if we already loaded today's receipt for this subscription
             if (processedSubIds.contains(doc.id)) continue;
 
             final subData = doc.data();
@@ -179,6 +190,13 @@ class DeliveryProvider with ChangeNotifier {
               bool isAreaMatched = false;
               Map<String, dynamic>? targetCustomerData;
 
+              // Step 1: Check the subscription document directly
+              final subAreaCode = subData['areaCode']?.toString() ?? '';
+              if (deliveryBoy.assignedAreas.contains(subAreaCode)) {
+                isAreaMatched = true;
+              }
+
+              // Step 2: If the sub document doesn't match, check the customer profile
               final customerId = subData['customerId'] as String?;
               if (customerId != null) {
                 targetCustomerData = localCustomerCache[customerId];
@@ -192,36 +210,68 @@ class DeliveryProvider with ChangeNotifier {
                     localCustomerCache[customerId] = targetCustomerData;
                   }
                 }
-                if (targetCustomerData != null) {
-                  final customerAreaCode = targetCustomerData['areaCode'] ?? '';
-                  if (deliveryBoy.assignedAreas.contains(customerAreaCode))
+
+                if (!isAreaMatched && targetCustomerData != null) {
+                  final custAreaCode =
+                      targetCustomerData['areaCode']?.toString() ?? '';
+                  if (deliveryBoy.assignedAreas.contains(custAreaCode)) {
                     isAreaMatched = true;
+                  }
+
+                  // Also check the nested customer address pinCode (Critical for Admin App Match)
+                  if (!isAreaMatched) {
+                    final custAddress =
+                        targetCustomerData['address'] as Map<String, dynamic>?;
+                    final custPinCode =
+                        custAddress?['pinCode']?.toString() ?? '';
+                    if (deliveryBoy.assignedAreas.contains(custPinCode)) {
+                      isAreaMatched = true;
+                    }
+                  }
                 }
               }
 
-              if (isAreaMatched && targetCustomerData != null) {
-                final address =
-                    targetCustomerData['address'] as Map<String, dynamic>?;
+              // Step 3: If any area matches, build the order
+              if (isAreaMatched) {
+                Map<String, dynamic>? address;
+
+                // Prioritize customer address if available
+                if (targetCustomerData != null &&
+                    targetCustomerData['address'] != null) {
+                  address =
+                      targetCustomerData['address'] as Map<String, dynamic>;
+                } else if (subData['address'] != null) {
+                  // Fallback to basic address string if it exists in sub
+                  address = {
+                    'fullAddress': subData['address'].toString(),
+                    'latitude': 0.0,
+                    'longitude': 0.0,
+                  };
+                }
+
+                double distance = 999.0;
                 if (address != null) {
                   final destLat = _parseCoordinate(address['latitude']);
                   final destLng = _parseCoordinate(address['longitude']);
-                  if (destLat == 0.0 && destLng == 0.0) continue;
 
-                  final distance = await _calculateDistance(
-                    baseLatitude,
-                    baseLongitude,
-                    destLat,
-                    destLng,
-                  );
-                  deliveries.add(
-                    DeliveryOrder.fromSubscription(
-                      subData,
-                      doc.id,
-                      distance,
-                      address,
-                    ),
-                  );
+                  if (destLat != 0.0 && destLng != 0.0) {
+                    distance = await _calculateDistance(
+                      baseLatitude,
+                      baseLongitude,
+                      destLat,
+                      destLng,
+                    );
+                  }
                 }
+
+                deliveries.add(
+                  DeliveryOrder.fromSubscription(
+                    subData,
+                    doc.id,
+                    distance,
+                    address ?? {'fullAddress': 'No Address Provided'},
+                  ),
+                );
               }
             }
           } catch (e) {
@@ -258,14 +308,17 @@ class DeliveryProvider with ChangeNotifier {
       for (var delivery in _todayDeliveries) {
         final destLat = delivery.deliveryAddress.latitude;
         final destLng = delivery.deliveryAddress.longitude;
-        if (destLat == 0.0 && destLng == 0.0) continue;
 
-        final newDistance = await _calculateDistance(
-          baseLatitude,
-          baseLongitude,
-          destLat,
-          destLng,
-        );
+        double newDistance = delivery.distanceFromBase;
+        if (destLat != 0.0 && destLng != 0.0) {
+          newDistance = await _calculateDistance(
+            baseLatitude,
+            baseLongitude,
+            destLat,
+            destLng,
+          );
+        }
+
         updatedDeliveries.add(
           DeliveryOrder(
             id: delivery.id,
@@ -297,30 +350,36 @@ class DeliveryProvider with ChangeNotifier {
 
   bool _shouldDeliverToday(Map<String, dynamic> subscriptionData) {
     final type = subscriptionData['type'] as String?;
-    final startDateRaw = (subscriptionData['startDate'] as Timestamp?)
-        ?.toDate();
-    if (startDateRaw == null) return false;
+
+    DateTime? startDate;
+    final rawDate = subscriptionData['startDate'];
+
+    if (rawDate is Timestamp) {
+      startDate = rawDate.toDate();
+    } else if (rawDate is String) {
+      startDate = DateTime.tryParse(rawDate);
+    }
+
+    if (startDate == null) return false;
 
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    final startDate = DateTime(
-      startDateRaw.year,
-      startDateRaw.month,
-      startDateRaw.day,
-    );
+    final start = DateTime(startDate.year, startDate.month, startDate.day);
 
-    if (today.isBefore(startDate)) return false;
-    final daysDifference = today.difference(startDate).inDays;
+    if (today.isBefore(start)) return false;
+
+    final daysDifference = today.difference(start).inDays;
 
     switch (type) {
       case 'monthly':
       case 'weekly':
       case 'trial':
+      case 'daily':
         return true;
       case 'alternateDay':
         return daysDifference % 2 == 0;
       default:
-        return false;
+        return true;
     }
   }
 
@@ -368,7 +427,6 @@ class DeliveryProvider with ChangeNotifier {
 
         monthlyDelivered += monthlyOrdersQuery.docs.where((doc) {
           final data = doc.data();
-          // STRICTLY filter by the delivery boy so stats don't mix
           return data['deliveredBy'] == deliveryBoy.id;
         }).length;
 
@@ -405,7 +463,6 @@ class DeliveryProvider with ChangeNotifier {
     }
   }
 
-  // CRITICAL FIX: Updated Order Status Function
   Future<void> updateOrderStatus(
     DeliveryOrder order,
     String status,
@@ -415,7 +472,6 @@ class DeliveryProvider with ChangeNotifier {
       String documentIdToUpdate = order.id;
       String collectionToUpdate = 'orders';
 
-      // Check if this is a raw subscription being updated for the first time today
       bool isRawSubscriptionActedUpon =
           (order.type == DeliveryType.subscription && !order.id.contains('_'));
 
@@ -425,28 +481,25 @@ class DeliveryProvider with ChangeNotifier {
       };
 
       if (isRawSubscriptionActedUpon) {
-        // Create a unique daily order ID for this subscription delivery
         final now = DateTime.now();
         final todayStr = '${now.year}-${now.month}-${now.day}';
         documentIdToUpdate = '${order.id}_$todayStr';
 
         updateData['subscriptionId'] = order.id;
         updateData['customerId'] = order.customerId;
-        updateData['type'] = 'subscription'; // Tells Admin app it's a sub
+        updateData['type'] = 'subscription';
         updateData['deliveryDate'] = Timestamp.now();
         updateData['totalAmount'] = order.totalAmount;
       } else if (order.type == DeliveryType.subscription &&
           order.id.contains('_')) {
-        // It's a daily subscription order that was already created
         collectionToUpdate = 'orders';
       } else {
-        collectionToUpdate = 'orders'; // Standard one-time order
+        collectionToUpdate = 'orders';
       }
 
       if (status == 'delivered' && deliveryBoy.id.isNotEmpty) {
         updateData['deliveredBy'] = deliveryBoy.id;
 
-        // PUSH EARNINGS TO ADMIN DATABASE
         try {
           final double earned = deliveryBoy.calculateEarnings(1);
           await _firestore.collection('delivery_boys').doc(deliveryBoy.id).set({
@@ -459,7 +512,6 @@ class DeliveryProvider with ChangeNotifier {
         }
       }
 
-      // Save to database
       if (isRawSubscriptionActedUpon) {
         await _firestore
             .collection('orders')
@@ -472,11 +524,10 @@ class DeliveryProvider with ChangeNotifier {
             .update(updateData);
       }
 
-      // Update Local UI instantly
       final index = _todayDeliveries.indexWhere((d) => d.id == order.id);
       if (index != -1) {
         _todayDeliveries[index] = DeliveryOrder(
-          id: documentIdToUpdate, // Swap to new Daily ID so future taps work
+          id: documentIdToUpdate,
           customerId: order.customerId,
           customerName: order.customerName,
           customerPhone: order.customerPhone,
