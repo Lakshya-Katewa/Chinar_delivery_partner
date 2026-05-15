@@ -71,7 +71,7 @@ class DeliveryProvider with ChangeNotifier {
       Map<String, Map<String, dynamic>> localCustomerCache = {};
       Set<String> processedSubIds = {};
 
-      // 1. LOAD STANDARD ORDERS (AND DAILY SUBSCRIPTION RECEIPTS)
+      // 1. LOAD STANDARD ORDERS
       try {
         final ordersQuery = await _firestore
             .collection('orders')
@@ -120,7 +120,6 @@ class DeliveryProvider with ChangeNotifier {
             Map<String, dynamic>? deliveryAddress =
                 orderData['deliveryAddress'] as Map<String, dynamic>?;
 
-            // If the receipt doesn't have an address, grab it from the customer profile
             if (deliveryAddress == null && customerData != null) {
               deliveryAddress =
                   customerData['address'] as Map<String, dynamic>?;
@@ -190,13 +189,11 @@ class DeliveryProvider with ChangeNotifier {
               bool isAreaMatched = false;
               Map<String, dynamic>? targetCustomerData;
 
-              // Step 1: Check the subscription document directly
               final subAreaCode = subData['areaCode']?.toString() ?? '';
               if (deliveryBoy.assignedAreas.contains(subAreaCode)) {
                 isAreaMatched = true;
               }
 
-              // Step 2: If the sub document doesn't match, check the customer profile
               final customerId = subData['customerId'] as String?;
               if (customerId != null) {
                 targetCustomerData = localCustomerCache[customerId];
@@ -218,7 +215,6 @@ class DeliveryProvider with ChangeNotifier {
                     isAreaMatched = true;
                   }
 
-                  // Also check the nested customer address pinCode (Critical for Admin App Match)
                   if (!isAreaMatched) {
                     final custAddress =
                         targetCustomerData['address'] as Map<String, dynamic>?;
@@ -231,17 +227,14 @@ class DeliveryProvider with ChangeNotifier {
                 }
               }
 
-              // Step 3: If any area matches, build the order
               if (isAreaMatched) {
                 Map<String, dynamic>? address;
 
-                // Prioritize customer address if available
                 if (targetCustomerData != null &&
                     targetCustomerData['address'] != null) {
                   address =
                       targetCustomerData['address'] as Map<String, dynamic>;
                 } else if (subData['address'] != null) {
-                  // Fallback to basic address string if it exists in sub
                   address = {
                     'fullAddress': subData['address'].toString(),
                     'latitude': 0.0,
@@ -415,20 +408,49 @@ class DeliveryProvider with ChangeNotifier {
       double monthlyEarnings = 0.0;
 
       try {
-        final monthlyOrdersQuery = await _firestore
-            .collection('orders')
-            .where(
-              'deliveryDate',
-              isGreaterThanOrEqualTo: Timestamp.fromDate(startOfMonth),
-            )
-            .where('status', isEqualTo: 'delivered')
-            .limit(1000)
-            .get();
+        QuerySnapshot<Map<String, dynamic>> monthlyOrdersQuery;
 
-        monthlyDelivered += monthlyOrdersQuery.docs.where((doc) {
-          final data = doc.data();
-          return data['deliveredBy'] == deliveryBoy.id;
-        }).length;
+        try {
+          monthlyOrdersQuery = await _firestore
+              .collection('orders')
+              .where('deliveredBy', isEqualTo: deliveryBoy.id)
+              .where(
+                'deliveryDate',
+                isGreaterThanOrEqualTo: Timestamp.fromDate(startOfMonth),
+              )
+              .get();
+
+          monthlyDelivered = monthlyOrdersQuery.docs.where((doc) {
+            return doc.data()['status'] == 'delivered';
+          }).length;
+        } catch (indexError) {
+          monthlyOrdersQuery = await _firestore
+              .collection('orders')
+              .where('deliveredBy', isEqualTo: deliveryBoy.id)
+              .get();
+
+          int calcDelivered = 0;
+          for (var doc in monthlyOrdersQuery.docs) {
+            final data = doc.data();
+            if (data['status'] == 'delivered') {
+              DateTime? dDate;
+              final rawDate = data['deliveryDate'] ?? data['updatedAt'];
+              if (rawDate is Timestamp) {
+                dDate = rawDate.toDate();
+              } else if (rawDate is String) {
+                dDate = DateTime.tryParse(rawDate);
+              }
+
+              if (dDate != null &&
+                  dDate.isAfter(
+                    startOfMonth.subtract(const Duration(seconds: 1)),
+                  )) {
+                calcDelivered++;
+              }
+            }
+          }
+          monthlyDelivered = calcDelivered;
+        }
 
         monthlyEarnings = deliveryBoy.calculateEarnings(monthlyDelivered);
       } catch (e) {
@@ -487,9 +509,40 @@ class DeliveryProvider with ChangeNotifier {
 
         updateData['subscriptionId'] = order.id;
         updateData['customerId'] = order.customerId;
+        updateData['customerName'] = order.customerName;
+        updateData['customerPhone'] = order.customerPhone;
+
         updateData['type'] = 'subscription';
         updateData['deliveryDate'] = Timestamp.now();
+        updateData['orderDate'] = Timestamp.now();
         updateData['totalAmount'] = order.totalAmount;
+
+        final safePaymentMethod =
+            (order.paymentMethod != null && order.paymentMethod!.isNotEmpty)
+            ? order.paymentMethod
+            : 'wallet';
+        updateData['paymentMethod'] = safePaymentMethod;
+
+        updateData['items'] = [
+          {
+            'productId': 'sub_${order.id}',
+            'productName': 'Subscription Delivery',
+            'price': order.totalAmount,
+            'quantity': 1,
+            'imageUrl': '',
+          },
+        ];
+
+        dynamic safeAddress = order.deliveryAddress;
+        try {
+          updateData['deliveryAddress'] = safeAddress.toMap();
+        } catch (_) {
+          updateData['deliveryAddress'] = {
+            'latitude': safeAddress.latitude,
+            'longitude': safeAddress.longitude,
+            'fullAddress': 'Subscription Destination',
+          };
+        }
       } else if (order.type == DeliveryType.subscription &&
           order.id.contains('_')) {
         collectionToUpdate = 'orders';
@@ -500,6 +553,7 @@ class DeliveryProvider with ChangeNotifier {
       if (status == 'delivered' && deliveryBoy.id.isNotEmpty) {
         updateData['deliveredBy'] = deliveryBoy.id;
 
+        // 1. Update Driver Earnings
         try {
           final double earned = deliveryBoy.calculateEarnings(1);
           await _firestore.collection('delivery_boys').doc(deliveryBoy.id).set({
@@ -509,6 +563,23 @@ class DeliveryProvider with ChangeNotifier {
           }, SetOptions(merge: true));
         } catch (e) {
           debugPrint('Earnings update error: $e');
+        }
+
+        // 2. NEW: INCREMENT SUBSCRIPTION DELIVERED COUNT
+        if (order.type == DeliveryType.subscription) {
+          try {
+            // Safely extract the original Subscription ID
+            String subId = order.id;
+            if (subId.contains('_')) {
+              subId = subId.split('_').first;
+            }
+
+            await _firestore.collection('subscriptions').doc(subId).update({
+              'deliveredCount': FieldValue.increment(1),
+            });
+          } catch (e) {
+            debugPrint('Failed to update subscription count: $e');
+          }
         }
       }
 

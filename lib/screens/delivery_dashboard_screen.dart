@@ -9,7 +9,8 @@ class DeliveryDashboardScreen extends StatefulWidget {
   const DeliveryDashboardScreen({super.key});
 
   @override
-  State<DeliveryDashboardScreen> createState() => _DeliveryDashboardScreenState();
+  State<DeliveryDashboardScreen> createState() =>
+      _DeliveryDashboardScreenState();
 }
 
 class _DeliveryDashboardScreenState extends State<DeliveryDashboardScreen> {
@@ -34,13 +35,15 @@ class _DeliveryDashboardScreenState extends State<DeliveryDashboardScreen> {
     try {
       // Request location permissions
       final status = await Permission.location.request();
-      
+
       if (status.isDenied) {
         debugPrint('Location permission denied');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Location permission is required for accurate delivery routes'),
+              content: Text(
+                'Location permission is required for accurate delivery routes',
+              ),
               backgroundColor: Colors.orange,
             ),
           );
@@ -50,7 +53,9 @@ class _DeliveryDashboardScreenState extends State<DeliveryDashboardScreen> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: const Text('Please enable location permission in app settings'),
+              content: const Text(
+                'Please enable location permission in app settings',
+              ),
               backgroundColor: Colors.red,
               action: SnackBarAction(
                 label: 'Settings',
@@ -66,154 +71,176 @@ class _DeliveryDashboardScreenState extends State<DeliveryDashboardScreen> {
   }
 
   Future<void> _initializeLocation() async {
-  try {
-    // Check permissions first
-    LocationPermission permission = await Geolocator.checkPermission();
-    
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
+    try {
+      // Check permissions first
+      LocationPermission permission = await Geolocator.checkPermission();
+
       if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Location permission is required for navigation'),
+                backgroundColor: Colors.orange,
+              ),
+            );
+          }
+          return;
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text(
+                'Please enable location permission in app settings',
+              ),
+              backgroundColor: Colors.red,
+              action: SnackBarAction(
+                label: 'Settings',
+                onPressed: () => openAppSettings(),
+              ),
+            ),
+          );
+        }
+        return;
+      }
+
+      // Check if location services are enabled
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Location permission is required for navigation'),
+              content: Text('Please enable location services for navigation'),
               backgroundColor: Colors.orange,
             ),
           );
         }
         return;
       }
-    }
 
-    if (permission == LocationPermission.deniedForever) {
+      // Get current position with better error handling
+      final position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+        timeLimit: const Duration(seconds: 15),
+      );
+
+      final authProvider = Provider.of<DeliveryAuthProvider>(
+        context,
+        listen: false,
+      );
+      await authProvider.updateLocation(position.latitude, position.longitude);
+
+      debugPrint(
+        'Location initialized successfully: ${position.latitude}, ${position.longitude}',
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Location updated successfully'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('Error getting location: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: const Text('Please enable location permission in app settings'),
+            content: Text('Could not get current location: $e'),
             backgroundColor: Colors.red,
             action: SnackBarAction(
-              label: 'Settings',
-              onPressed: () => openAppSettings(),
+              label: 'Retry',
+              onPressed: _initializeLocation,
             ),
           ),
         );
       }
-      return;
-    }
-
-    // Check if location services are enabled
-    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Please enable location services for navigation'),
-            backgroundColor: Colors.orange,
-          ),
-        );
-      }
-      return;
-    }
-
-    // Get current position with better error handling
-    final position = await Geolocator.getCurrentPosition(
-      desiredAccuracy: LocationAccuracy.high,
-      timeLimit: const Duration(seconds: 15),
-    );
-    
-    final authProvider = Provider.of<DeliveryAuthProvider>(context, listen: false);
-    await authProvider.updateLocation(position.latitude, position.longitude);
-    
-    debugPrint('Location initialized successfully: ${position.latitude}, ${position.longitude}');
-    
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Location updated successfully'),
-          backgroundColor: Colors.green,
-          duration: Duration(seconds: 2),
-        ),
-      );
-    }
-    
-  } catch (e) {
-    debugPrint('Error getting location: $e');
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Could not get current location: $e'),
-          backgroundColor: Colors.red,
-          action: SnackBarAction(
-            label: 'Retry',
-            onPressed: _initializeLocation,
-          ),
-        ),
-      );
     }
   }
-}
 
   Future<void> _loadDeliveries() async {
-    final authProvider = Provider.of<DeliveryAuthProvider>(context, listen: false);
-    final deliveryProvider = Provider.of<DeliveryProvider>(context, listen: false);
-    
+    final authProvider = Provider.of<DeliveryAuthProvider>(
+      context,
+      listen: false,
+    );
+    final deliveryProvider = Provider.of<DeliveryProvider>(
+      context,
+      listen: false,
+    );
+
     if (authProvider.deliveryBoy != null) {
       await deliveryProvider.loadTodayDeliveries(authProvider.deliveryBoy!);
     }
   }
 
   Future<void> _refreshLocationAndRoute() async {
-  try {
-    // Show loading indicator
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Row(
-            children: [
-              SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                ),
-              ),
-              SizedBox(width: 16),
-              Text('Getting current location...'),
-            ],
-          ),
-          backgroundColor: Colors.blue,
-          duration: Duration(seconds: 3),
-        ),
-      );
-    }
-
-    final authProvider = Provider.of<DeliveryAuthProvider>(context, listen: false);
-    final deliveryProvider = Provider.of<DeliveryProvider>(context, listen: false);
-    
-    if (authProvider.deliveryBoy != null) {
-      await deliveryProvider.refreshLocationAndDistances(authProvider.deliveryBoy!);
-      
+    try {
+      // Show loading indicator
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Route updated from current location'),
-            backgroundColor: Colors.green,
+            content: Row(
+              children: [
+                SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                  ),
+                ),
+                SizedBox(width: 16),
+                Expanded(
+                  child: Text('Getting current location...'),
+                ), // Wrapped in Expanded
+              ],
+            ),
+            backgroundColor: Colors.blue,
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+
+      final authProvider = Provider.of<DeliveryAuthProvider>(
+        context,
+        listen: false,
+      );
+      final deliveryProvider = Provider.of<DeliveryProvider>(
+        context,
+        listen: false,
+      );
+
+      if (authProvider.deliveryBoy != null) {
+        await deliveryProvider.refreshLocationAndDistances(
+          authProvider.deliveryBoy!,
+        );
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Route updated from current location'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error updating location: $e'),
+            backgroundColor: Colors.red,
           ),
         );
       }
     }
-  } catch (e) {
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error updating location: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
   }
-}
 
   void _onItemTapped(int index) {
     setState(() {
@@ -256,17 +283,25 @@ class _DeliveryDashboardScreenState extends State<DeliveryDashboardScreen> {
           builder: (context, authProvider, child) {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min, // Prevents vertical overflow
               children: [
                 Text(
                   'Hello, ${authProvider.deliveryBoy?.name ?? 'Delivery Partner'}',
                   style: const TextStyle(fontSize: 16),
+                  overflow:
+                      TextOverflow.ellipsis, // Prevents horizontal overflow
+                  maxLines: 1,
                 ),
                 Text(
-                  authProvider.deliveryBoy?.commissionInfo ?? 'Ready for deliveries',
+                  authProvider.deliveryBoy?.commissionInfo ??
+                      'Ready for deliveries',
                   style: TextStyle(
                     fontSize: 12,
                     color: Colors.white.withOpacity(0.9),
                   ),
+                  overflow:
+                      TextOverflow.ellipsis, // Prevents horizontal overflow
+                  maxLines: 1,
                 ),
               ],
             );
@@ -315,8 +350,11 @@ class _DeliveryDashboardScreenState extends State<DeliveryDashboardScreen> {
                         ),
                         child: Row(
                           children: [
-                            Icon(Icons.warning_amber, 
-                                 color: Colors.orange.shade700, size: 20),
+                            Icon(
+                              Icons.warning_amber,
+                              color: Colors.orange.shade700,
+                              size: 20,
+                            ),
                             const SizedBox(width: 8),
                             Expanded(
                               child: Text(
@@ -350,7 +388,10 @@ class _DeliveryDashboardScreenState extends State<DeliveryDashboardScreen> {
               );
 
               if (confirmed == true) {
-                final authProvider = Provider.of<DeliveryAuthProvider>(context, listen: false);
+                final authProvider = Provider.of<DeliveryAuthProvider>(
+                  context,
+                  listen: false,
+                );
                 await authProvider.signOut();
                 if (mounted) {
                   Navigator.pushReplacementNamed(context, '/delivery-login');
@@ -374,7 +415,7 @@ class _DeliveryDashboardScreenState extends State<DeliveryDashboardScreen> {
                   builder: (context, authProvider, child) {
                     final deliveryBoy = authProvider.deliveryBoy;
                     if (deliveryBoy == null) return const SizedBox.shrink();
-                    
+
                     return Container(
                       width: double.infinity,
                       padding: const EdgeInsets.all(16),
@@ -386,7 +427,10 @@ class _DeliveryDashboardScreenState extends State<DeliveryDashboardScreen> {
                       ),
                       child: Row(
                         children: [
-                          Icon(Icons.currency_rupee, color: Colors.blue.shade700),
+                          Icon(
+                            Icons.currency_rupee,
+                            color: Colors.blue.shade700,
+                          ),
                           const SizedBox(width: 12),
                           Expanded(
                             child: Column(
@@ -416,23 +460,31 @@ class _DeliveryDashboardScreenState extends State<DeliveryDashboardScreen> {
                 Consumer<DeliveryProvider>(
                   builder: (context, deliveryProvider, child) {
                     final currentLocation = deliveryProvider.currentLocation;
-                    
+
                     return Container(
                       width: double.infinity,
                       padding: const EdgeInsets.all(16),
                       margin: const EdgeInsets.only(bottom: 16),
                       decoration: BoxDecoration(
-                        color: currentLocation != null ? Colors.green.shade50 : Colors.orange.shade50,
+                        color: currentLocation != null
+                            ? Colors.green.shade50
+                            : Colors.orange.shade50,
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                          color: currentLocation != null ? Colors.green.shade200 : Colors.orange.shade200,
+                          color: currentLocation != null
+                              ? Colors.green.shade200
+                              : Colors.orange.shade200,
                         ),
                       ),
                       child: Row(
                         children: [
                           Icon(
-                            currentLocation != null ? Icons.location_on : Icons.location_off,
-                            color: currentLocation != null ? Colors.green.shade700 : Colors.orange.shade700,
+                            currentLocation != null
+                                ? Icons.location_on
+                                : Icons.location_off,
+                            color: currentLocation != null
+                                ? Colors.green.shade700
+                                : Colors.orange.shade700,
                           ),
                           const SizedBox(width: 12),
                           Expanded(
@@ -440,14 +492,18 @@ class _DeliveryDashboardScreenState extends State<DeliveryDashboardScreen> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  currentLocation != null ? 'Location Active' : 'Location Unavailable',
+                                  currentLocation != null
+                                      ? 'Location Active'
+                                      : 'Location Unavailable',
                                   style: TextStyle(
                                     fontWeight: FontWeight.bold,
-                                    color: currentLocation != null ? Colors.green.shade700 : Colors.orange.shade700,
+                                    color: currentLocation != null
+                                        ? Colors.green.shade700
+                                        : Colors.orange.shade700,
                                   ),
                                 ),
                                 Text(
-                                  currentLocation != null 
+                                  currentLocation != null
                                       ? 'Routes optimized from current location'
                                       : 'Using stored location for routes',
                                   style: const TextStyle(fontSize: 12),
@@ -470,7 +526,7 @@ class _DeliveryDashboardScreenState extends State<DeliveryDashboardScreen> {
                 Consumer<DeliveryProvider>(
                   builder: (context, deliveryProvider, child) {
                     final stats = deliveryProvider.stats;
-                    
+
                     if (stats == null) {
                       return const Center(child: CircularProgressIndicator());
                     }
@@ -545,11 +601,14 @@ class _DeliveryDashboardScreenState extends State<DeliveryDashboardScreen> {
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                const Text(
-                                  'Today\'s Progress',
-                                  style: TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
+                                const Expanded(
+                                  child: Text(
+                                    'Today\'s Progress',
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
                                 Text(
@@ -566,7 +625,9 @@ class _DeliveryDashboardScreenState extends State<DeliveryDashboardScreen> {
                             LinearProgressIndicator(
                               value: stats.todayCompletionRate / 100,
                               backgroundColor: Colors.grey.shade200,
-                              valueColor: AlwaysStoppedAnimation<Color>(Colors.green.shade700),
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                Colors.green.shade700,
+                              ),
                               minHeight: 8,
                             ),
                             const SizedBox(height: 8),
@@ -600,10 +661,7 @@ class _DeliveryDashboardScreenState extends State<DeliveryDashboardScreen> {
                 // Quick Actions
                 const Text(
                   'Quick Actions',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 16),
 
@@ -645,7 +703,8 @@ class _DeliveryDashboardScreenState extends State<DeliveryDashboardScreen> {
                         'Customers',
                         Icons.people,
                         Colors.orange,
-                        () => Navigator.pushNamed(context, '/delivery-customers'),
+                        () =>
+                            Navigator.pushNamed(context, '/delivery-customers'),
                       ),
                     ),
                   ],
@@ -678,12 +737,15 @@ class _DeliveryDashboardScreenState extends State<DeliveryDashboardScreen> {
                                 Expanded(
                                   child: Column(
                                     children: [
-                                      Text(
-                                        '${stats.monthlyDelivered}',
-                                        style: TextStyle(
-                                          fontSize: 24,
-                                          fontWeight: FontWeight.bold,
-                                          color: Colors.green.shade700,
+                                      FittedBox(
+                                        fit: BoxFit.scaleDown,
+                                        child: Text(
+                                          '${stats.monthlyDelivered}',
+                                          style: TextStyle(
+                                            fontSize: 24,
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.green.shade700,
+                                          ),
                                         ),
                                       ),
                                       const Text(
@@ -704,12 +766,15 @@ class _DeliveryDashboardScreenState extends State<DeliveryDashboardScreen> {
                                 Expanded(
                                   child: Column(
                                     children: [
-                                      Text(
-                                        '₹${stats.monthlyEarnings.toStringAsFixed(0)}',
-                                        style: TextStyle(
-                                          fontSize: 24,
-                                          fontWeight: FontWeight.bold,
-                                          color: Colors.blue.shade700,
+                                      FittedBox(
+                                        fit: BoxFit.scaleDown,
+                                        child: Text(
+                                          '₹${stats.monthlyEarnings.toStringAsFixed(0)}',
+                                          style: TextStyle(
+                                            fontSize: 24,
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.blue.shade700,
+                                          ),
                                         ),
                                       ),
                                       const Text(
@@ -746,55 +811,56 @@ class _DeliveryDashboardScreenState extends State<DeliveryDashboardScreen> {
             icon: Icon(Icons.dashboard),
             label: 'Dashboard',
           ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.list_alt),
-            label: 'Orders',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.people),
-            label: 'Customers',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.person),
-            label: 'Profile',
-          ),
+          BottomNavigationBarItem(icon: Icon(Icons.list_alt), label: 'Orders'),
+          BottomNavigationBarItem(icon: Icon(Icons.people), label: 'Customers'),
+          BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
         ],
       ),
     );
   }
 
-  Widget _buildStatCard(String title, String value, IconData icon, Color color, {String? subtitle}) {
+  Widget _buildStatCard(
+    String title,
+    String value,
+    IconData icon,
+    Color color, {
+    String? subtitle,
+  }) {
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(
+          12,
+        ), // Reduced padding slightly for smaller screens
         child: Column(
           children: [
-            Icon(icon, color: color, size: 32),
+            Icon(icon, color: color, size: 28), // Reduced icon size slightly
             const SizedBox(height: 8),
-            Text(
-              value,
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: color,
+            FittedBox(
+              fit: BoxFit.scaleDown, // Shrinks the text if it gets too long
+              child: Text(
+                value,
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: color,
+                ),
               ),
             ),
             Text(
               title,
-              style: const TextStyle(
-                color: Colors.grey,
-                fontSize: 12,
-              ),
+              style: const TextStyle(color: Colors.grey, fontSize: 12),
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
             if (subtitle != null) ...[
               const SizedBox(height: 4),
               Text(
                 subtitle,
-                style: TextStyle(
-                  color: Colors.grey.shade600,
-                  fontSize: 10,
-                ),
+                style: TextStyle(color: Colors.grey.shade600, fontSize: 10),
                 textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
               ),
             ],
           ],
@@ -803,7 +869,12 @@ class _DeliveryDashboardScreenState extends State<DeliveryDashboardScreen> {
     );
   }
 
-  Widget _buildActionCard(String title, IconData icon, Color color, VoidCallback onTap) {
+  Widget _buildActionCard(
+    String title,
+    IconData icon,
+    Color color,
+    VoidCallback onTap,
+  ) {
     return Card(
       child: InkWell(
         onTap: onTap,
@@ -821,6 +892,8 @@ class _DeliveryDashboardScreenState extends State<DeliveryDashboardScreen> {
                   fontSize: 14,
                 ),
                 textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
             ],
           ),

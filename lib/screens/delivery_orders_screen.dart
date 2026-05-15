@@ -132,88 +132,103 @@ class _DeliveryOrdersScreenState extends State<DeliveryOrdersScreen> {
   void _showOrderActions(DeliveryOrder order) {
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true, // FIX: Allows the bottom sheet to be resized
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (context) => Container(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Colors.grey.shade300,
-                borderRadius: BorderRadius.circular(2),
-              ),
+      builder: (context) => SafeArea(
+        // FIX: Prevents overlap with device navigation bar
+        child: SingleChildScrollView(
+          // FIX: Makes the content scrollable to prevent overflow
+          child: Container(
+            padding: EdgeInsets.only(
+              top: 20,
+              left: 20,
+              right: 20,
+              bottom: MediaQuery.of(context).viewInsets.bottom + 20,
             ),
-            const SizedBox(height: 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const SizedBox(height: 20),
 
-            Text(
-              order.customerName,
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Order #${order.id.substring(0, 8)}',
-              style: TextStyle(color: Colors.grey.shade600),
-            ),
-            const SizedBox(height: 24),
-
-            _buildActionButton(
-              icon: Icons.phone,
-              label: 'Call Customer',
-              color: Colors.green,
-              onTap: () {
-                Navigator.pop(context);
-                _makePhoneCall(order.customerPhone);
-              },
-            ),
-            const SizedBox(height: 12),
-
-            _buildActionButton(
-              icon: Icons.navigation,
-              label: 'Get Directions',
-              color: Colors.blue,
-              onTap: () {
-                Navigator.pop(context);
-                _openMaps(
-                  order.deliveryAddress.latitude,
-                  order.deliveryAddress.longitude,
-                  order.deliveryAddress.fullAddress,
+                Text(
                   order.customerName,
-                );
-              },
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Order #${order.id.substring(0, 8)}',
+                  style: TextStyle(color: Colors.grey.shade600),
+                ),
+                const SizedBox(height: 24),
+
+                _buildActionButton(
+                  icon: Icons.phone,
+                  label: 'Call Customer',
+                  color: Colors.green,
+                  onTap: () {
+                    Navigator.pop(context);
+                    _makePhoneCall(order.customerPhone);
+                  },
+                ),
+                const SizedBox(height: 12),
+
+                _buildActionButton(
+                  icon: Icons.navigation,
+                  label: 'Get Directions',
+                  color: Colors.blue,
+                  onTap: () {
+                    Navigator.pop(context);
+                    _openMaps(
+                      order.deliveryAddress.latitude,
+                      order.deliveryAddress.longitude,
+                      order.deliveryAddress.fullAddress,
+                      order.customerName,
+                    );
+                  },
+                ),
+                const SizedBox(height: 12),
+
+                if (order.status != 'delivered') ...[
+                  _buildActionButton(
+                    icon: Icons.local_shipping,
+                    label: 'Mark as Out for Delivery',
+                    color: Colors.orange,
+                    onTap: () => _updateOrderStatus(order, 'outForDelivery'),
+                  ),
+                  const SizedBox(height: 12),
+
+                  _buildActionButton(
+                    icon: Icons.check_circle,
+                    label: 'Mark as Delivered',
+                    color: Colors.green,
+                    onTap: () => _updateOrderStatus(order, 'delivered'),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+
+                _buildActionButton(
+                  icon: Icons.close,
+                  label: 'Close',
+                  color: Colors.grey,
+                  onTap: () => Navigator.pop(context),
+                ),
+                const SizedBox(height: 20),
+              ],
             ),
-            const SizedBox(height: 12),
-
-            if (order.status != 'delivered') ...[
-              _buildActionButton(
-                icon: Icons.local_shipping,
-                label: 'Mark as Out for Delivery',
-                color: Colors.orange,
-                onTap: () => _updateOrderStatus(order, 'outForDelivery'),
-              ),
-              const SizedBox(height: 12),
-
-              _buildActionButton(
-                icon: Icons.check_circle,
-                label: 'Mark as Delivered',
-                color: Colors.green,
-                onTap: () => _updateOrderStatus(order, 'delivered'),
-              ),
-              const SizedBox(height: 12),
-            ],
-
-            _buildActionButton(
-              icon: Icons.close,
-              label: 'Close',
-              color: Colors.grey,
-              onTap: () => Navigator.pop(context),
-            ),
-            const SizedBox(height: 20),
-          ],
+          ),
         ),
       ),
     );
@@ -306,7 +321,6 @@ class _DeliveryOrdersScreenState extends State<DeliveryOrdersScreen> {
       if (deliveryBoy == null)
         throw Exception("Delivery boy profile not found.");
 
-      // CRITICAL FIX: Pass the full objects so the provider can properly duplicate them to 'orders'
       await deliveryProvider.updateOrderStatus(order, status, deliveryBoy);
 
       if (mounted) {
